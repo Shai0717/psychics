@@ -1,0 +1,10 @@
+display-name: 모험가
+mana: 100.0
+mana-regen-per-second: 5.0
+abilities:
+  dash:
+    ability: io.github.monun.dash
+  renewal:
+    ability: io.github.monun.renewal
+  shockwave:
+    ability: io.github.monun.shockwave

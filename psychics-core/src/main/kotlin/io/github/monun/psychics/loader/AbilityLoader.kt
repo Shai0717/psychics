@@ -22,6 +22,7 @@ import io.github.monun.psychics.AbilityConcept
 import io.github.monun.psychics.AbilityContainer
 import io.github.monun.psychics.AbilityDescription
 import java.io.File
+import java.lang.reflect.ParameterizedType
 import java.util.concurrent.ConcurrentHashMap
 
 
@@ -39,10 +40,11 @@ class AbilityLoader internal constructor() {
         try {
             val abilityClass =
                 Class.forName(description.main, true, classLoader).asSubclass(Ability::class.java) //메인 클래스 찾기
-            val abilityKClass = abilityClass.kotlin
-            val conceptClassName =
-                abilityKClass.supertypes.first().arguments.first().type.toString().removePrefix("class ")
-            val conceptClass = Class.forName(conceptClassName, true, classLoader).asSubclass(AbilityConcept::class.java)
+            val abilityType = abilityClass.genericSuperclass as? ParameterizedType
+                ?: error("Ability ${abilityClass.name} must declare its concept type")
+            val conceptType = abilityType.actualTypeArguments.firstOrNull() as? Class<*>
+                ?: error("Ability ${abilityClass.name} must use a concrete concept type")
+            val conceptClass = conceptType.asSubclass(AbilityConcept::class.java)
 
             testCreateInstance(abilityClass)
             testCreateInstance(conceptClass)

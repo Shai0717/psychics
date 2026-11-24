@@ -17,15 +17,13 @@
 
 package io.github.monun.psychics.plugin
 
-import io.github.monun.kommand.kommand
 import io.github.monun.psychics.PsychicManager
 import io.github.monun.psychics.Psychics
 import io.github.monun.psychics.attribute.EsperStatistic
-import io.github.monun.psychics.command.KommandAbility
-import io.github.monun.psychics.command.KommandPsychics
+import io.github.monun.psychics.command.PsychicsCommands
 import io.github.monun.psychics.damage.Damage
-import io.github.monun.tap.event.EntityEventManager
-import io.github.monun.tap.fake.FakeEntityServer
+import io.github.Shai0717.kolor.KolorDisplay
+import io.github.Shai0717.kolor.KolorScheduler
 import org.bukkit.Bukkit
 import org.bukkit.configuration.serialization.ConfigurationSerialization
 import org.bukkit.plugin.java.JavaPlugin
@@ -35,12 +33,8 @@ import java.io.File
  * @author monun
  */
 class PsychicsPlugin : JavaPlugin() {
-
-    lateinit var fakeEntityServer: FakeEntityServer
-        private set
-
-    lateinit var entityEventManager: EntityEventManager
-        private set
+    val kolorScheduler by lazy { KolorScheduler(this) }
+    val kolorDisplay by lazy { KolorDisplay(this) }
 
     lateinit var psychicManager: PsychicManager
         private set
@@ -54,14 +48,10 @@ class PsychicsPlugin : JavaPlugin() {
         loadModules()
         setupCommands()
         registerPlayers()
-        Psychics.initialize(this, logger, psychicManager, fakeEntityServer)
+        Psychics.initialize(this, logger, psychicManager)
     }
 
     private fun loadModules() {
-        fakeEntityServer = FakeEntityServer.create(this).apply {
-            Bukkit.getOnlinePlayers().forEach { addPlayer(it) }
-        }
-        entityEventManager = EntityEventManager(this)
         psychicManager = PsychicManager(
             this,
             logger,
@@ -78,41 +68,28 @@ class PsychicsPlugin : JavaPlugin() {
 
         server.apply {
             pluginManager.registerEvents(
-                EventListener(
-                    psychicManager,
-                    fakeEntityServer
-                ), this@PsychicsPlugin
+                EventListener(psychicManager), this@PsychicsPlugin
             )
-            scheduler.runTaskTimer(this@PsychicsPlugin, SchedulerTask(psychicManager, fakeEntityServer), 0L, 1L)
         }
     }
 
     private fun registerPlayers() {
         for (player in server.onlinePlayers) {
-            fakeEntityServer.addPlayer(player)
             psychicManager.addPlayer(player)
         }
     }
 
     private fun setupCommands() {
-        kommand {
-            KommandPsychics.register(this@PsychicsPlugin, psychicManager, this)
-            KommandAbility.register(this)
-        }
+        PsychicsCommands(this, psychicManager).register()
     }
 
     override fun onDisable() {
         if (this::psychicManager.isInitialized) {
             psychicManager.unload()
         }
-        if (this::fakeEntityServer.isInitialized) {
-            fakeEntityServer.clear()
-        }
     }
 
     fun reloadPsychics() {
-        fakeEntityServer.entities.forEach { it.remove() }
-        entityEventManager.unregisterAll()
         psychicManager.reload()
     }
 }

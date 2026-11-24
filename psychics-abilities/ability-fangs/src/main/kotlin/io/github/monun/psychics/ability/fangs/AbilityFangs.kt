@@ -7,14 +7,14 @@ import io.github.monun.psychics.damage.Damage
 import io.github.monun.psychics.damage.DamageType
 import io.github.monun.psychics.util.Times
 import io.github.monun.psychics.util.hostileFilter
-import io.github.monun.tap.config.Config
-import io.github.monun.tap.config.Name
-import io.github.monun.tap.fake.FakeEntity
+import io.github.monun.psychics.config.PsychicGroup
+import io.github.monun.psychics.config.PsychicSetting
 import net.kyori.adventure.text.Component.text
 import org.bukkit.Location
 import org.bukkit.Material
+import org.bukkit.Particle
 import org.bukkit.entity.Entity
-import org.bukkit.entity.EvokerFangs
+import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.LivingEntity
 import org.bukkit.event.Listener
 import org.bukkit.event.player.PlayerEvent
@@ -23,18 +23,18 @@ import org.bukkit.util.BoundingBox
 import java.util.*
 
 // 전방으로 가시를 발사
-@Name("fangs")
+@PsychicGroup("fangs")
 class AbilityConceptFangs : AbilityConcept() {
-    @Config
+    @PsychicSetting
     var fangsSpace = 1.5
 
-    @Config
+    @PsychicSetting
     var fangsHeight = 1.5
 
-    @Config
+    @PsychicSetting
     var fangsWidth = 2.0
 
-    @Config
+    @PsychicSetting
     var fangPerTime = 40L
 
     init {
@@ -66,7 +66,7 @@ class AbilityFangs : ActiveAbility<AbilityConceptFangs>(), Listener {
 
     override fun onDisable() {
         fun PriorityQueue<Fang>.destroy() {
-            forEach { it.fakeEntity.remove() }
+            forEach { it.display?.let(psychic::removeDisplay) }
             clear()
         }
 
@@ -87,16 +87,18 @@ class AbilityFangs : ActiveAbility<AbilityConceptFangs>(), Listener {
 
         repeat(count) {
             val loc = location.add(vector).clone()
-            val fakeEntity = psychic.spawnFakeEntity(location.clone().apply { y -= 0.3 }, EvokerFangs::class.java)
             val effectTime = currentTime + concept.fangPerTime * it
-            effectQueue.offer(
-                Fang(
-                    loc,
-                    fakeEntity,
-                    effectTime,
-                    damaged
-                )
-            )
+            val fang = Fang(loc, effectTime, damaged = damaged)
+            effectQueue.offer(fang)
+            psychic.displayItem(loc.clone().apply { y -= 0.3 }, ItemStack(Material.BONE))
+                .thenAccept { display ->
+                    fang.display = display
+                    display.itemDisplayTransform = org.bukkit.entity.ItemDisplay.ItemDisplayTransform.HEAD
+                }
+                .exceptionally { exception ->
+                    psychic.plugin.logger.warning("Could not create fang display: ${exception.message}")
+                    null
+                }
         }
 
         exhaust()
@@ -106,7 +108,11 @@ class AbilityFangs : ActiveAbility<AbilityConceptFangs>(), Listener {
         val current = Times.current
 
         effectQueue.execute(current) { fang ->
-            fang.fakeEntity.playEffect(4) // 물기
+            val location = fang.location
+            location.world.spawnParticle(Particle.CRIT, location, 8, 0.2, 0.1, 0.2, 0.1)
+            fang.display?.let { display ->
+                psychic.plugin.kolorDisplay.update(display) { it.teleport(location.clone().add(0.0, 0.15, 0.0)) }
+            }
             fang.nextRunTime += 250L
             damageQueue.offer(fang)
         }
@@ -128,15 +134,15 @@ class AbilityFangs : ActiveAbility<AbilityConceptFangs>(), Listener {
         }
 
         removeQueue.execute(current) {
-            it.fakeEntity.remove()
+            it.display?.let(psychic::removeDisplay)
         }
     }
 
     private class Fang(
         val location: Location,
-        val fakeEntity: FakeEntity,
         var nextRunTime: Long,
-        val damaged: MutableSet<Entity>
+        val damaged: MutableSet<Entity>,
+        var display: ItemDisplay? = null
     ) : Comparable<Fang> {
         override fun compareTo(other: Fang): Int {
             return nextRunTime.compareTo(other.nextRunTime)

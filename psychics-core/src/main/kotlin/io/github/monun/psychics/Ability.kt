@@ -24,8 +24,6 @@ import io.github.monun.psychics.damage.psychicHeal
 import io.github.monun.psychics.format.decimalFormat
 import io.github.monun.psychics.util.TargetFilter
 import io.github.monun.psychics.util.Times
-import io.github.monun.tap.ref.getValue
-import io.github.monun.tap.ref.weaky
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.Component.space
 import net.kyori.adventure.text.Component.text
@@ -81,8 +79,7 @@ abstract class Ability<T : AbilityConcept> {
     }
 
     internal fun initPsychic(psychic: Psychic) {
-        val delegate by weaky(psychic)
-        this.psychic = delegate
+        this.psychic = psychic
     }
 
     open fun test(): TestResult {

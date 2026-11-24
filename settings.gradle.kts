@@ -1,5 +1,7 @@
 rootProject.name = "psychics"
 
+includeBuild("Kolor")
+
 val core = "${rootProject.name}-core"
 val abilities = "${rootProject.name}-abilities"
 

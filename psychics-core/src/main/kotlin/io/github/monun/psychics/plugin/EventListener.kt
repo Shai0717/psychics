@@ -24,7 +24,7 @@ import io.github.monun.psychics.item.enchantability
 import io.github.monun.psychics.item.isPsychicbound
 import io.github.monun.psychics.item.psionicsLevel
 import io.github.monun.psychics.item.removeAllPsychicbounds
-import io.github.monun.tap.fake.FakeEntityServer
+import io.github.monun.psychics.invfx.InvPsychic
 import org.bukkit.GameMode
 import org.bukkit.Material
 import org.bukkit.entity.Player
@@ -46,14 +46,12 @@ import kotlin.random.Random.Default.nextFloat
 import kotlin.random.Random.Default.nextInt
 
 class EventListener(
-    private val psychicManager: PsychicManager,
-    private val fakeEntityServer: FakeEntityServer
+    private val psychicManager: PsychicManager
 ) : Listener {
     @EventHandler
     fun onJoin(event: PlayerJoinEvent) {
         val player = event.player
         psychicManager.addPlayer(player)
-        fakeEntityServer.addPlayer(player)
 
         if (player.esper.psychic == null) {
             player.inventory.removeAllPsychicbounds()
@@ -64,7 +62,6 @@ class EventListener(
     fun onQuit(event: PlayerQuitEvent) {
         val player = event.player
         psychicManager.removePlayer(player)
-        fakeEntityServer.removePlayer(player)
     }
 
     @EventHandler
@@ -96,6 +93,7 @@ class EventListener(
     //psychicbound
     @EventHandler(ignoreCancelled = true)
     fun onInventoryClick(event: InventoryClickEvent) {
+        if (InvPsychic.handleClick(event)) return
         if (event.whoClicked.gameMode == GameMode.CREATIVE) return
 
         val type = event.inventory.type

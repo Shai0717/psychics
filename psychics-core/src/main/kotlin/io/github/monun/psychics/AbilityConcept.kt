@@ -24,7 +24,9 @@ import io.github.monun.psychics.tooltip.TooltipBuilder
 import io.github.monun.psychics.tooltip.removeDefaultItemDecorations
 import io.github.monun.psychics.tooltip.stats
 import io.github.monun.psychics.tooltip.template
-import io.github.monun.tap.config.*
+import io.github.monun.psychics.config.PsychicGroup
+import io.github.monun.psychics.config.PsychicSetting
+import io.github.monun.psychics.config.PsychicSettings
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.Component.space
 import net.kyori.adventure.text.Component.text
@@ -36,7 +38,7 @@ import org.bukkit.configuration.ConfigurationSection
 import org.bukkit.inventory.ItemStack
 import java.util.logging.Logger
 
-@Name("common")
+@PsychicGroup("common")
 open class AbilityConcept {
     lateinit var name: String
         private set
@@ -53,7 +55,7 @@ open class AbilityConcept {
     /**
      * 표시 이름 (I18N)
      */
-    @Config(required = false)
+    @PsychicSetting(required = false)
     lateinit var displayName: String
         protected set
 
@@ -66,38 +68,34 @@ open class AbilityConcept {
      * Ability의 기본값은 PASSIVE이며
      * ActiveAbility의 기본값은 ACTIVE입니다.
      */
-    @Config
+    @PsychicSetting
     var type = AbilityType.PASSIVE
         protected set
 
     /**
      * 필요 레벨
      */
-    @Config(required = false)
-    @RangeInt(min = 0)
+    @PsychicSetting(required = false, minimum = 0.0)
     var levelRequirement = 0
 
     /**
      * 재사용 대기시간
      */
-    @Config(required = false)
-    @RangeInt(min = 0)
+    @PsychicSetting(required = false, minimum = 0.0)
     var cooldownTime = 0L
         protected set
 
     /**
      * 마나 소모
      */
-    @Config(required = false)
-    @RangeDouble(min = 0.0)
+    @PsychicSetting(required = false, minimum = 0.0)
     var cost = 0.0
         protected set
 
     /**
      * 시전 시간
      */
-    @Config(required = false)
-    @RangeInt(min = 0)
+    @PsychicSetting(required = false, minimum = 0.0)
     var castingTime = 0L
         protected set
 
@@ -105,52 +103,51 @@ open class AbilityConcept {
      * 시전 시간 -> 집중 시간
      * 스킬을 시전 시 외부에서 중단 가능
      */
-    @Config(required = false)
+    @PsychicSetting(required = false)
     var interruptible = false
         protected set
 
     /**
      * 시전 상태 바 색상
      */
-    @Config(required = false)
+    @PsychicSetting(required = false)
     var castingBarColor: BarColor? = null
 
     /**
      * 지속 시간
      */
-    @Config(required = false)
+    @PsychicSetting(required = false)
     var durationTime = 0L
         protected set
 
     /**
      * 사거리
      */
-    @Config(required = false)
-    @RangeDouble(min = 0.0)
+    @PsychicSetting(required = false, minimum = 0.0)
     var range = 0.0
         protected set
 
     /**
      * 피해량
      */
-    @Config(required = false)
+    @PsychicSetting(required = false)
     var damage: Damage? = null
         protected set
 
     /**
      * 넉백
      */
-    @Config(required = false)
+    @PsychicSetting(required = false)
     var knockback = 0.0
 
     /**
      * 치유량
      */
-    @Config(required = false)
+    @PsychicSetting(required = false)
     var healing: EsperStatistic? = null
         protected set
 
-    @Config("wand", required = false)
+    @PsychicSetting("wand", required = false)
     private var _wand: ItemStack? = null
 
     internal val internalWand
@@ -165,7 +162,7 @@ open class AbilityConcept {
             _wand = value?.clone()
         }
 
-    @Config("supply-items")
+    @PsychicSetting("supply-items")
     private var _supplyItems: List<ItemStack> = ImmutableList.of()
 
     /**
@@ -177,7 +174,7 @@ open class AbilityConcept {
             _supplyItems = ImmutableList.copyOf(value.map { it.clone() })
         }
 
-    @Config("description")
+    @PsychicSetting("description")
     private var descriptionRaw: List<String> = ArrayList(0)
 
     var description: List<Component> = emptyList()
@@ -203,7 +200,7 @@ open class AbilityConcept {
         val gson = GsonComponentSerializer.gson()
         descriptionRaw = description.map { gson.serialize(it) }
 
-        val ret = ConfigSupport.compute(this, config, true)
+        val ret = PsychicSettings.apply(this, config)
 
         this._supplyItems = ImmutableList.copyOf(_supplyItems)
         this.description = descriptionRaw.map { gson.deserialize(it) }

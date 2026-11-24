@@ -1,5 +1,3 @@
-import org.gradle.kotlin.dsl.support.zipTo
-
 val core = project(":${rootProject.name}-core")
 
 subprojects {
@@ -12,11 +10,12 @@ subprojects {
     project.extra.apply {
         set("projectName", projectName)
         set("packageName", name.removePrefix("ability-").replace("-", ""))
-        set("abilityName", name.removePrefix("ability-").split('-').joinToString(separator = "") { it.capitalize() })
+        set("abilityName", name.removePrefix("ability-").split('-').joinToString(separator = "") { it.replaceFirstChar(Char::uppercase) })
     }
 
     dependencies {
         implementation(core)
+        compileOnly("io.github.Shai0717:Kolor:1.0.0")
     }
 
     tasks {
@@ -31,26 +30,16 @@ subprojects {
             archiveBaseName.set("${project.group}.${project.name.removePrefix("ability-")}")
             from(sourceSets["main"].output)
 
-            doLast {
-                copy {
-                    from(archiveFile)
-                    val plugins = File(rootDir, ".debug/plugins/Psychics/abilities")
-                    into(if (File(plugins, archiveFileName.get()).exists()) File(plugins, "update") else plugins)
-                }
-            }
         }
 
         rootProject.tasks {
+            named<Zip>("distribution") {
+                dependsOn(paperJar)
+                from(paperJar) { into("plugins/Psychics/abilities") }
+            }
             register<DefaultTask>(projectName) {
                 dependsOn(paperJar)
             }
         }
     }
-}
-
-gradle.buildFinished {
-    val libs = File(buildDir, "libs")
-
-    if (libs.exists())
-        zipTo(File(buildDir, "abilities.zip"), libs)
 }

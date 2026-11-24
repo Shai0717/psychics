@@ -7,8 +7,7 @@ import io.github.monun.psychics.attribute.EsperAttribute
 import io.github.monun.psychics.damage.Damage
 import io.github.monun.psychics.damage.DamageType
 import io.github.monun.psychics.util.hostileFilter
-import io.github.monun.tap.config.Name
-import io.github.monun.tap.effect.playFirework
+import io.github.monun.psychics.config.PsychicGroup
 import net.kyori.adventure.text.Component.text
 import org.bukkit.*
 import org.bukkit.entity.LivingEntity
@@ -17,7 +16,7 @@ import org.bukkit.event.player.PlayerEvent
 import org.bukkit.inventory.ItemStack
 
 // 지정한 대상에게 폭죽 효과와 피해를 입히는 능력
-@Name("sample")
+@PsychicGroup("sample")
 class AbilityConceptSample : AbilityConcept() {
     init {
         cooldownTime = 5000L
@@ -33,14 +32,6 @@ class AbilityConceptSample : AbilityConcept() {
 }
 
 class AbilitySample : ActiveAbility<AbilityConceptSample>(), Listener {
-    companion object {
-        private val effect = FireworkEffect.builder().with(FireworkEffect.Type.BURST).withColor(Color.RED).build()
-
-        private fun LivingEntity.playPsychicEffect() {
-            world.playFirework(location, effect)
-        }
-    }
-
     override fun onInitialize() {
         targeter = {
             val player = esper.player
@@ -83,6 +74,6 @@ class AbilitySample : ActiveAbility<AbilityConceptSample>(), Listener {
         cooldownTime = concept.cooldownTime
 
         target.psychicDamage()
-        target.playPsychicEffect()
+        target.world.spawnParticle(Particle.FIREWORK, target.location, 20, 0.2, 0.2, 0.2, 0.1)
     }
 }

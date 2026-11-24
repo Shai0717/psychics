@@ -18,7 +18,6 @@
 package io.github.monun.psychics
 
 import io.github.monun.psychics.plugin.PsychicsPlugin
-import io.github.monun.tap.fake.FakeEntityServer
 import org.bukkit.entity.Player
 import java.util.logging.Logger
 
@@ -32,19 +31,14 @@ object Psychics {
     lateinit var psychicManager: PsychicManager
         private set
 
-    lateinit var fakeEntityServer: FakeEntityServer
-        private set
-
     internal fun initialize(
         plugin: PsychicsPlugin,
         logger: Logger,
-        psychicManager: PsychicManager,
-        fakeEntityServer: FakeEntityServer
+        psychicManager: PsychicManager
     ) {
         this.plugin = plugin
         this.logger = logger
         this.psychicManager = psychicManager
-        this.fakeEntityServer = fakeEntityServer
     }
 }
 

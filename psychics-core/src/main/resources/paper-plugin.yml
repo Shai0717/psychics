@@ -1,0 +1,11 @@
+name: Psychics
+main: io.github.monun.psychics.plugin.PsychicsPlugin
+api-version: '26.3'
+version: $version
+author: Monun
+dependencies:
+  server:
+    Kolor:
+      load: BEFORE
+      required: true
+      join-classpath: true

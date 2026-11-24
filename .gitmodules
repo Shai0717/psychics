@@ -1,0 +1,3 @@
+[submodule "Kolor"]
+	path = Kolor
+	url = https://github.com/Shai0717/kolor.git

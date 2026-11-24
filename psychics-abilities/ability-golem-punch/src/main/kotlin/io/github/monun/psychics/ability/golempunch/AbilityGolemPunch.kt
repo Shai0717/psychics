@@ -2,16 +2,14 @@ package io.github.monun.psychics.ability.golempunch
 
 import io.github.monun.psychics.Ability
 import io.github.monun.psychics.AbilityConcept
-import io.github.monun.tap.config.Name
-import io.github.monun.tap.event.EntityProvider
-import io.github.monun.tap.event.TargetEntity
+import io.github.monun.psychics.config.PsychicGroup
 import net.kyori.adventure.text.Component.text
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.entity.EntityDamageByEntityEvent
 
 // 타격시 넉백을 위로 변환
-@Name("golem-punch")
+@PsychicGroup("golem-punch")
 class AbilityConceptGolemPunch : AbilityConcept() {
     init {
         description = listOf(
@@ -25,9 +23,9 @@ class AbilityGolemPunch : Ability<AbilityConceptGolemPunch>(), Listener {
         psychic.registerEvents(this)
     }
 
-    @TargetEntity(EntityProvider.EntityDamageByEntity.Damager::class)
     @EventHandler(ignoreCancelled = true)
     fun onAttack(event: EntityDamageByEntityEvent) {
+        if (event.damager !== esper.player) return
         val target = event.entity
 
         psychic.runTask({

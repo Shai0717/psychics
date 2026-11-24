@@ -9,9 +9,8 @@ import io.github.monun.psychics.damage.DamageType
 import io.github.monun.psychics.damage.psychicDamage
 import io.github.monun.psychics.tooltip.TooltipBuilder
 import io.github.monun.psychics.util.TargetFilter
-import io.github.monun.tap.config.Config
-import io.github.monun.tap.config.Name
-import io.github.monun.tap.fake.FakeEntity
+import io.github.monun.psychics.config.PsychicGroup
+import io.github.monun.psychics.config.PsychicSetting
 import net.kyori.adventure.text.Component.text
 import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.text.format.TextDecoration
@@ -19,9 +18,8 @@ import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.Particle
 import org.bukkit.Sound
-import org.bukkit.entity.ArmorStand
 import org.bukkit.entity.LivingEntity
-import org.bukkit.entity.TNTPrimed
+import org.bukkit.entity.ItemDisplay
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.entity.PlayerDeathEvent
@@ -34,15 +32,15 @@ import kotlin.math.max
 
 // 지속시간 이후 폭발하여 주위에 피해를 입힘
 // 사망시 두배 데미지
-@Name("bomber")
+@PsychicGroup("bomber")
 class AbilityConceptBomber : AbilityConcept() {
-    @Config
+    @PsychicSetting
     var selfDamage = 0.5
 
-    @Config
+    @PsychicSetting
     var speedAmplifier = 3
 
-    @Config
+    @PsychicSetting
     var deathDamage = 2.0
 
     init {
@@ -78,7 +76,8 @@ class AbilityConceptBomber : AbilityConcept() {
 }
 
 class AbilityBomber : ActiveAbility<AbilityConceptBomber>(), Listener {
-    private var tnt: TNT? = null
+    private var tntDisplay: ItemDisplay? = null
+    private var armed = false
 
     override fun onEnable() {
         psychic.runTaskTimer(this::update, 0L, 1L)
@@ -87,6 +86,7 @@ class AbilityBomber : ActiveAbility<AbilityConceptBomber>(), Listener {
 
     @EventHandler
     fun onPlayerDeath(event: PlayerDeathEvent) {
+        if (event.player !== esper.player) return
         durationTime = 0L
         destroy()
     }
@@ -95,61 +95,60 @@ class AbilityBomber : ActiveAbility<AbilityConceptBomber>(), Listener {
         val remainDurationTime = durationTime
 
         if (remainDurationTime > 0L) {
-            tnt?.run { onUpdate(tntLocation()) }
+            tntDisplay?.let { psychic.plugin.kolorDisplay.teleport(it, tntLocation()) }
+            tntLocation().world.spawnParticle(Particle.FLAME, tntLocation(), 1, 0.0, 0.0, 0.0, 0.025)
         } else {
             destroy()
         }
     }
 
     private fun destroy() {
-        tnt?.run {
-            /**
-             * 폭발 로직
-             */
+        if (!armed) return
+        armed = false
+        tntDisplay?.let(psychic::removeDisplay)
+        tntDisplay = null
 
-            remove()
-            tnt = null
+        val location = tntLocation()
+        val world = location.world
 
-            val location = tntLocation()
-            val world = location.world
+        val r = max(1.0, concept.range - 2.0)
+        world.spawnParticle(Particle.EXPLOSION_EMITTER, location, (r * r).toInt(), r, r, r, 0.0, null, true)
+        world.playSound(location, Sound.ENTITY_GENERIC_EXPLODE, 2.0F, 1.0F)
 
-            val r = max(1.0, concept.range - 2.0)
-            world.spawnParticle(Particle.EXPLOSION_HUGE, location, (r * r).toInt(), r, r, r, 0.0, null, true)
-            world.playSound(location, Sound.ENTITY_GENERIC_EXPLODE, 2.0F, 1.0F)
+        val damage = concept.damage!!
+        var amount = esper.getStatistic(damage.stats)
+        val dead = esper.player.health <= 0.0
+        if (dead) amount *= concept.deathDamage
+        val knockback = concept.knockback
 
-            val damage = concept.damage!!
-            var amount = esper.getStatistic(damage.stats)
-            val dead = esper.player.health <= 0.0
-            if (dead) amount *= concept.deathDamage
-            val knockback = concept.knockback
-
-            val box = BoundingBox.of(location, r, r, r)
-            world.getNearbyEntities(box, TargetFilter(esper.player)).forEach { enemy ->
-                if (enemy is LivingEntity) {
-                    enemy.psychicDamage(this@AbilityBomber, damage.type, amount, esper.player, location, knockback)
-                }
+        val box = BoundingBox.of(location, r, r, r)
+        world.getNearbyEntities(box, TargetFilter(esper.player)).forEach { enemy ->
+            if (enemy is LivingEntity) {
+                enemy.psychicDamage(this@AbilityBomber, damage.type, amount, esper.player, location, knockback)
             }
-
-            /**
-             * 플레이어가 죽지 않았을때 데미지
-             */
-
-            if (!dead)
-                esper.player.psychicDamage(
-                    this@AbilityBomber,
-                    damage.type,
-                    amount * concept.selfDamage,
-                    esper.player,
-                    location
-                )
         }
+
+        if (!dead)
+            esper.player.psychicDamage(
+                this@AbilityBomber,
+                damage.type,
+                amount * concept.selfDamage,
+                esper.player,
+                location
+            )
     }
 
     override fun onCast(event: PlayerEvent, action: WandAction, target: Any?) {
         psychic.consumeMana(concept.cost)
         cooldownTime = concept.cooldownTime
         durationTime = concept.durationTime
-        tnt = TNT(tntLocation())
+        armed = true
+        psychic.displayItem(tntLocation(), ItemStack(Material.TNT))
+            .thenAccept { tntDisplay = it }
+            .exceptionally { exception ->
+                psychic.plugin.logger.warning("Could not create bomber display: ${exception.message}")
+                null
+            }
 
         val speedLevel = concept.speedAmplifier
 
@@ -166,45 +165,4 @@ class AbilityBomber : ActiveAbility<AbilityConceptBomber>(), Listener {
      */
     private fun tntLocation() = esper.player.location.apply { y += 3.0 }
 
-    /**
-     * 가짜 TNT 효과
-     */
-    inner class TNT(location: Location) {
-        private val stand: FakeEntity
-        private val tnt: FakeEntity
-
-        init {
-            val psychic = psychic
-            stand = psychic.spawnFakeEntity(location, ArmorStand::class.java).apply {
-                updateMetadata<ArmorStand> {
-                    isMarker = true
-                    isInvisible = true
-                }
-            }
-            tnt = psychic.spawnFakeEntity(location, TNTPrimed::class.java).apply {
-                updateMetadata<TNTPrimed> {
-                    fuseTicks = (durationTime / 50L).toInt()
-                }
-            }
-            stand.addPassenger(tnt)
-        }
-
-        fun onUpdate(location: Location) {
-            stand.moveTo(location)
-            location.y += 0.9
-
-            val maxFuseDistance = 3.0
-            val durationTime = durationTime
-            val maxDurationTime = concept.durationTime
-            val r = (durationTime.toDouble() / maxDurationTime.toDouble())
-
-            location.y += r * maxFuseDistance
-            location.world.spawnParticle(Particle.FLAME, location, 1, 0.0, 0.0, 0.0, 0.025, null, true)
-        }
-
-        fun remove() {
-            tnt.remove()
-            stand.remove()
-        }
-    }
 }

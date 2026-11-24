@@ -2,9 +2,8 @@ package io.github.monun.psychics.ability.berserker
 
 import io.github.monun.psychics.AbilityConcept
 import io.github.monun.psychics.ActiveAbility
-import io.github.monun.tap.config.Config
-import io.github.monun.tap.config.Name
-import io.github.monun.tap.effect.playFirework
+import io.github.monun.psychics.config.PsychicGroup
+import io.github.monun.psychics.config.PsychicSetting
 import org.bukkit.*
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
@@ -16,13 +15,13 @@ import org.bukkit.potion.PotionEffect
 import org.bukkit.potion.PotionEffectType
 
 // 지속시간동안 넉백무시, 받는 데미지 감소
-@Name("berserker")
+@PsychicGroup("berserker")
 class AbilityConceptBerserker : AbilityConcept() {
 
-    @Config
+    @PsychicSetting
     var speedAmplifier = 4
 
-    @Config
+    @PsychicSetting
     var damageOnDuration = 0.5
 
     init {
@@ -46,7 +45,7 @@ class AbilityBerserker : ActiveAbility<AbilityConceptBerserker>(), Listener {
         val location = player.location.apply { y += 2.0 }
         val world = location.world
 
-        world.spawnParticle(Particle.VILLAGER_ANGRY, location.x, location.y, location.z, 4, 0.25, 0.0, 0.25, 0.0, null, true)
+        world.spawnParticle(Particle.ANGRY_VILLAGER, location.x, location.y, location.z, 4, 0.25, 0.0, 0.25, 0.0, null, true)
     }
 
     override fun onCast(event: PlayerEvent, action: WandAction, target: Any?) {
@@ -63,12 +62,12 @@ class AbilityBerserker : ActiveAbility<AbilityConceptBerserker>(), Listener {
 
         val location = player.location.apply { y += 2.0 }
         val world = location.world
-        val firework = FireworkEffect.builder().with(FireworkEffect.Type.BURST).withColor(Color.RED).withFlicker().build()
-        world.playFirework(location, firework)
+        world.spawnParticle(Particle.FIREWORK, location, 30, 0.3, 0.3, 0.3, 0.1)
     }
 
     @EventHandler(ignoreCancelled = true)
     fun onEntityDamage(event: EntityDamageEvent) {
+        if (event.entity !== esper.player) return
         if (durationTime > 0L) {
             val damage = event.damage * concept.damageOnDuration
             event.damage = damage
@@ -77,6 +76,7 @@ class AbilityBerserker : ActiveAbility<AbilityConceptBerserker>(), Listener {
 
     @EventHandler(ignoreCancelled = true)
     fun onVelocity(event: PlayerVelocityEvent) {
+        if (event.player !== esper.player) return
         if (durationTime > 0L) {
             event.isCancelled = true
         }

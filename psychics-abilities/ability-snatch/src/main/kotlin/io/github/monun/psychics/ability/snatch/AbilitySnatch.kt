@@ -3,8 +3,8 @@ package io.github.monun.psychics.ability.snatch
 import io.github.monun.psychics.AbilityConcept
 import io.github.monun.psychics.ActiveAbility
 import io.github.monun.psychics.Channel
-import io.github.monun.tap.config.Config
-import io.github.monun.tap.config.Name
+import io.github.monun.psychics.config.PsychicGroup
+import io.github.monun.psychics.config.PsychicSetting
 import org.bukkit.*
 import org.bukkit.entity.ArmorStand
 import org.bukkit.entity.LivingEntity
@@ -14,13 +14,13 @@ import org.bukkit.inventory.ItemStack
 import org.bukkit.util.BoundingBox
 
 // 지정한 위치의 개체를 자신의 앞으로 끌어오기
-@Name("snatch")
+@PsychicGroup("snatch")
 class AbilityConceptSnatch : AbilityConcept() {
 
-    @Config
+    @PsychicSetting
     var snatchWidth = 8.0
 
-    @Config
+    @PsychicSetting
     var snatchHeight = 3.0
 
     init {

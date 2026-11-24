@@ -18,30 +18,27 @@
 package io.github.monun.psychics
 
 import com.google.common.collect.ImmutableList
+import io.github.Shai0717.kolor.KolorTask
 import io.github.monun.psychics.plugin.PsychicsPlugin
 import io.github.monun.psychics.util.Times
-import io.github.monun.tap.event.RegisteredEntityListener
-import io.github.monun.tap.fake.FakeEntity
-import io.github.monun.tap.fake.FakeProjectileManager
-import io.github.monun.tap.ref.getValue
-import io.github.monun.tap.ref.weaky
-import io.github.monun.tap.task.Ticker
-import io.github.monun.tap.task.TickerTask
 import net.md_5.bungee.api.ChatColor
 import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.attribute.Attribute
-import org.bukkit.block.data.BlockData
 import org.bukkit.boss.BarColor
 import org.bukkit.boss.BarStyle
 import org.bukkit.boss.BossBar
 import org.bukkit.configuration.ConfigurationSection
-import org.bukkit.entity.ArmorStand
-import org.bukkit.entity.Entity
+import org.bukkit.entity.Display
+import org.bukkit.entity.ItemDisplay
 import org.bukkit.event.Listener
+import org.bukkit.event.HandlerList
 import org.bukkit.event.player.PlayerEvent
 import org.bukkit.inventory.ItemStack
+import org.joml.Vector3f
 import java.util.*
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CompletableFuture
 import kotlin.math.max
 
 class Psychic internal constructor(
@@ -126,13 +123,11 @@ class Psychic internal constructor(
 
     private lateinit var castingBar: BossBar
 
-    private lateinit var ticker: Ticker
-
-    private lateinit var projectiles: FakeProjectileManager
-
-    private lateinit var listeners: ArrayList<RegisteredEntityListener>
-
-    private lateinit var fakeEntities: MutableSet<FakeEntity>
+    private val tasks = ConcurrentHashMap.newKeySet<KolorTask>()
+    private val projectiles = ConcurrentHashMap.newKeySet<PsychicProjectile>()
+    private val listeners = Collections.newSetFromMap(WeakHashMap<Listener, Boolean>())
+    private val displays = ConcurrentHashMap.newKeySet<Display>()
+    private var updateTask: KolorTask? = null
 
     private var prevUpdateTime = 0L
 
@@ -157,16 +152,20 @@ class Psychic internal constructor(
 
         val player = esper.player
 
-        val delegate by weaky(esper)
-        this.esper = delegate
+        this.esper = esper
         castingBar = Bukkit.createBossBar(null, BarColor.WHITE, BarStyle.SOLID).apply {
             addPlayer(player)
             isVisible = false
         }
-        ticker = Ticker.precision()
-        projectiles = FakeProjectileManager()
-        listeners = arrayListOf()
-        fakeEntities = Collections.newSetFromMap(WeakHashMap<FakeEntity, Boolean>())
+        val playerTask = with(plugin.kolorScheduler) {
+            player.runOn(periodTicks = 1, retiredCallback = {
+                manager.logger.fine("Psychic player task retired: ${player.uniqueId}")
+            }) {
+                if (valid && isEnabled) update()
+            }
+        }
+        checkNotNull(playerTask) { "Could not schedule Psychic update for ${player.uniqueId}" }
+        updateTask = playerTask
 
         if (concept.mana > 0.0) {
             manaBar = Bukkit.createBossBar(null, concept.manaColor, BarStyle.SEGMENTED_10).apply {
@@ -205,20 +204,13 @@ class Psychic internal constructor(
 
     private fun onDisable() {
         castingBar.isVisible = false
-        ticker.cancelAll()
-        projectiles.clear()
-        listeners.run {
-            for (registeredEntityListener in this) {
-                registeredEntityListener.unregister()
-            }
-            clear()
-        }
-        fakeEntities.run {
-            for (fakeEntity in this) {
-                fakeEntity.remove()
-            }
-            clear()
-        }
+        tasks.forEach(KolorTask::cancel)
+        tasks.clear()
+        projectiles.toList().forEach(PsychicProjectile::remove)
+        listeners.toList().forEach(HandlerList::unregisterAll)
+        listeners.clear()
+        displays.forEach(plugin.kolorDisplay::remove)
+        displays.clear()
         for (ability in abilities) {
             ability.runCatching { onDisable() }.onFailure(Throwable::printStackTrace)
         }
@@ -297,11 +289,11 @@ class Psychic internal constructor(
      * @exception IllegalArgumentException 유효하지 않은 객체일때 발생
      * @exception IllegalArgumentException 활성화되지 않은 객체일때 발생
      */
-    fun runTask(runnable: Runnable, delay: Long): TickerTask {
+    fun runTask(runnable: Runnable, delay: Long): KolorTask {
         checkState()
         checkEnabled()
 
-        return ticker.runTask(runnable, delay)
+        return scheduleTask(runnable, delay, 0)
     }
 
     /**
@@ -312,11 +304,24 @@ class Psychic internal constructor(
      * @exception IllegalArgumentException 유효하지 않은 객체일때 발생
      * @exception IllegalArgumentException 활성화되지 않은 객체일때 발생
      */
-    fun runTaskTimer(runnable: Runnable, delay: Long, period: Long): TickerTask {
+    fun runTaskTimer(runnable: Runnable, delay: Long, period: Long): KolorTask {
         checkState()
         checkEnabled()
 
-        return ticker.runTaskTimer(runnable, delay, period)
+        return scheduleTask(runnable, delay, period)
+    }
+
+    private fun scheduleTask(runnable: Runnable, delay: Long, period: Long): KolorTask {
+        val player = esper.player
+        val task = with(plugin.kolorScheduler) {
+            player.runOn(delay, period, retiredCallback = {
+                plugin.logger.fine("Psychic task owner retired: ${player.uniqueId}")
+            }) {
+                if (isEnabled && valid) runnable.run()
+            }
+        }
+        return requireNotNull(task) { "Could not schedule Psychic task for ${player.uniqueId}" }
+            .also(tasks::add)
     }
 
     /**
@@ -333,7 +338,8 @@ class Psychic internal constructor(
         checkState()
         checkEnabled()
 
-        listeners.add(plugin.entityEventManager.registerEvents(esper.player, listener))
+        plugin.server.pluginManager.registerEvents(listener, plugin)
+        listeners.add(listener)
     }
 
     /**
@@ -349,7 +355,12 @@ class Psychic internal constructor(
         checkEnabled()
 
         projectile.psychic = this
-        projectiles.launch(location, projectile)
+        projectile.launch(location)
+        projectiles.add(projectile)
+    }
+
+    internal fun removeProjectile(projectile: PsychicProjectile) {
+        projectiles.remove(projectile)
     }
 
     /**
@@ -360,79 +371,26 @@ class Psychic internal constructor(
      * @exception IllegalArgumentException 유효하지 않은 객체일때 발생
      * @exception IllegalArgumentException 활성화되지 않은 객체일때 발생
      */
-    fun spawnFakeEntity(location: Location, entityClass: Class<out Entity>): FakeEntity {
-        checkState()
-        checkEnabled()
-
-        val fakeEntity = manager.plugin.fakeEntityServer.spawnEntity(location, entityClass)
-        fakeEntities.add(fakeEntity)
-
-        return fakeEntity
+    fun displayItem(location: Location, item: ItemStack): CompletableFuture<ItemDisplay> {
+        return displayItem(location, item, Vector3f(1f, 1f, 1f))
     }
 
-    /**
-     * 가상 [org.bukkit.entity.FallingBlock]을 생성합니다.
-     *
-     * 능력이 비활성화 될 때 제거됩니다.
-     *
-     * @exception IllegalArgumentException 유효하지 않은 객체일때 발생
-     * @exception IllegalArgumentException 활성화되지 않은 객체일때 발생
-     */
-    fun spawnFakeFallingBlock(location: Location, blockData: BlockData): FakeEntity {
+    fun displayItem(location: Location, item: ItemStack, scale: Vector3f): CompletableFuture<ItemDisplay> {
         checkState()
         checkEnabled()
-
-        val fakeEntity = manager.plugin.fakeEntityServer.spawnFallingBlock(location, blockData)
-        fakeEntities.add(fakeEntity)
-
-        return fakeEntity
-    }
-
-    /**
-     * 가상 [org.bukkit.entity.Item]을 생성합니다.
-     *
-     * 능력이 비활성화 될 때 제거됩니다.
-     *
-     * @exception IllegalArgumentException 유효하지 않은 객체일때 발생
-     * @exception IllegalArgumentException 활성화되지 않은 객체일때 발생
-     */
-    fun spawnItem(location: Location, itemStack: ItemStack): FakeEntity {
-        checkState()
-        checkEnabled()
-
-        val fakeEntity = manager.plugin.fakeEntityServer.spawnItem(location, itemStack)
-        fakeEntities.add(fakeEntity)
-
-        return fakeEntity
-    }
-
-    /**
-     * Marker로 설정된 [org.bukkit.entity.ArmorStand]를 생성합니다.
-     *
-     * 능력이 비활성화 될 때 제거됩니다.
-     *
-     * @exception IllegalArgumentException 유효하지 않은 객체일때 발생
-     * @exception IllegalArgumentException 활성화되지 않은 객체일때 발생
-     */
-    fun spawnMarker(location: Location): FakeEntity {
-        return spawnFakeEntity(location, ArmorStand::class.java).apply {
-            updateMetadata<ArmorStand> {
-                isMarker = true
-                isInvisible = true
+        return plugin.kolorDisplay.item(esper.player, location, item, scale).thenApply { display ->
+            if (!valid || !isEnabled) {
+                plugin.kolorDisplay.remove(display)
+                throw IllegalStateException("Psychic was disabled before its display spawned")
             }
+            displays.add(display)
+            display
         }
     }
 
-    /**
-     * Marker로 설정된 [org.bukkit.entity.ArmorStand]를 생성 후 인수로 받은 [FakeEntity]를 승객으로 설정합니다.
-     *
-     * 능력이 비활성화 될 때 제거됩니다.
-     *
-     * @exception IllegalArgumentException 유효하지 않은 객체일때 발생
-     * @exception IllegalArgumentException 활성화되지 않은 객체일때 발생
-     */
-    fun marker(passenger: FakeEntity): FakeEntity {
-        return spawnMarker(passenger.location).apply { addPassenger(passenger) }
+    fun removeDisplay(display: Display) {
+        displays.remove(display)
+        plugin.kolorDisplay.remove(display)
     }
 
     /**
@@ -483,6 +441,8 @@ class Psychic internal constructor(
 
     internal fun destroy() {
         isEnabled = false
+        updateTask?.cancel()
+        updateTask = null
         detach()
         valid = false
     }
@@ -496,8 +456,8 @@ class Psychic internal constructor(
         regenMana(elapsedTime)
         regenHealth(elapsedTime)
 
-        ticker.run()
-        projectiles.update()
+        tasks.removeIf(KolorTask::isCancelled)
+        projectiles.toList().forEach(PsychicProjectile::update)
 
         channeling?.let { channel ->
             val remainingTime = channel.remainingTime
@@ -525,7 +485,7 @@ class Psychic internal constructor(
         val health = player.health
 
         if (health > 0.0) {
-            val maxHealth = player.getAttribute(Attribute.GENERIC_MAX_HEALTH)?.value ?: 20.0
+            val maxHealth = player.getAttribute(Attribute.MAX_HEALTH)?.value ?: 20.0
             player.health =
                 (player.health + concept.healthRegenPerSecond * (elapsedTime / 1000.0)).coerceIn(
                     0.0,

@@ -1,10 +1,10 @@
 plugins {
-    kotlin("jvm") version "1.5.21"
+    kotlin("jvm") version "2.3.20"
 }
 
 java {
     toolchain {
-        languageVersion.set(JavaLanguageVersion.of(16))
+        languageVersion.set(JavaLanguageVersion.of(25))
     }
 }
 
@@ -15,27 +15,34 @@ allprojects {
 
     tasks {
         withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile::class) {
-            kotlinOptions {
-                jvmTarget = "16"
+            compilerOptions {
+                jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_25)
             }
         }
     }
+}
+
+tasks.register<Zip>("distribution") {
+    archiveBaseName.set("Psychics-26.3")
+    destinationDirectory.set(layout.buildDirectory.dir("distributions"))
+    dependsOn(":psychics-core:paperPluginJar", gradle.includedBuild("Kolor").task(":jar"))
+    from("Kolor/build/libs/Kolor-1.0.0.jar") { into("plugins"); rename { "Kolor.jar" } }
+    from(project(":psychics-core").layout.buildDirectory.file("libs/Psychics.jar")) { into("plugins") }
+    from("examples") { into("plugins/Psychics/psychics") }
+    from("LICENSE.md")
 }
 
 subprojects {
     apply(plugin = "org.jetbrains.kotlin.jvm")
 
     repositories {
-        maven("https://papermc.io/repo/repository/maven-public/")
+        maven("https://repo.papermc.io/repository/maven-public/")
     }
 
     dependencies {
-        compileOnly("io.papermc.paper:paper-api:1.17.1-R0.1-SNAPSHOT")
+        compileOnly("io.papermc.paper:paper-api:26.3.build.254-stable")
 
         implementation(kotlin("stdlib"))
-        implementation(kotlin("reflect"))
-
-        implementation("io.github.monun:tap-api:4.1.9")
 
         testImplementation("org.junit.jupiter:junit-jupiter-api:5.7.2")
         testImplementation("org.junit.jupiter:junit-jupiter-engine:5.7.2")

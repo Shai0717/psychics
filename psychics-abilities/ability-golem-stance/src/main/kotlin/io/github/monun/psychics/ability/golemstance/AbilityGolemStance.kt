@@ -2,14 +2,14 @@ package io.github.monun.psychics.ability.golemstance
 
 import io.github.monun.psychics.Ability
 import io.github.monun.psychics.AbilityConcept
-import io.github.monun.tap.config.Name
+import io.github.monun.psychics.config.PsychicGroup
 import net.kyori.adventure.text.Component.text
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.player.PlayerVelocityEvent
 
 // 지정한 대상에게 폭죽 효과와 피해를 입히는 능력
-@Name("golem-stance")
+@PsychicGroup("golem-stance")
 class AbilityConceptGolemStance : AbilityConcept() {
     init {
         description = listOf(
@@ -25,6 +25,7 @@ class AbilityGolemStance : Ability<AbilityConceptGolemStance>(), Listener {
 
     @EventHandler(ignoreCancelled = true)
     fun onVelocity(event: PlayerVelocityEvent) {
+        if (event.player !== esper.player) return
         event.isCancelled = true
     }
 }

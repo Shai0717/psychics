@@ -8,9 +8,7 @@ import io.github.monun.psychics.damage.Damage
 import io.github.monun.psychics.damage.DamageType
 import io.github.monun.psychics.damage.psychicDamage
 import io.github.monun.psychics.util.TargetFilter
-import io.github.monun.tap.config.Name
-import io.github.monun.tap.effect.playFirework
-import io.github.monun.tap.trail.TrailSupport
+import io.github.monun.psychics.config.PsychicGroup
 import net.kyori.adventure.text.Component.text
 import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.*
@@ -20,11 +18,10 @@ import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.entity.EntityShootBowEvent
 import org.bukkit.inventory.ItemStack
-import org.bukkit.potion.PotionType
 import kotlin.random.Random.Default.nextFloat
 
 // 화살을 발사시 직선으로 날아가는 화살 발사
-@Name("magic-archery")
+@PsychicGroup("magic-archery")
 class AbilityConceptMagicArchery : AbilityConcept() {
     var arrowSize = 1.0
 
@@ -51,10 +48,11 @@ class AbilityMagicArchery : Ability<AbilityConceptMagicArchery>(), Listener {
 
     @EventHandler(ignoreCancelled = true)
     fun onPlayerShootBow(event: EntityShootBowEvent) {
+        if (event.entity !== esper.player) return
         val projectile = event.projectile
 
         if (projectile is Arrow) {
-            if (projectile.basePotionData.type != PotionType.UNCRAFTABLE || projectile.hasCustomEffects()) return
+            if (projectile.basePotionType != null || projectile.hasCustomEffects()) return
 
             val player = esper.player
             val result = test()
@@ -130,14 +128,15 @@ class AbilityMagicArchery : Ability<AbilityConceptMagicArchery>(), Listener {
                     }
 
                     val box = target.boundingBox
-                    val effect = FireworkEffect.builder().with(FireworkEffect.Type.BURST)
-                        .withColor(if (force == 1.0F) Color.RED else Color.ORANGE).build()
-                    world.playFirework(box.centerX, box.maxY + 0.5, box.centerZ, effect)
+                    world.spawnParticle(Particle.FIREWORK, box.centerX, box.maxY + 0.5, box.centerZ, 20, 0.1, 0.1, 0.1, 0.1)
                 }
             }
 
-            TrailSupport.trail(start, to, 0.4) { w, x, y, z ->
-                w.spawnParticle(Particle.CRIT, x, y, z, 1, 0.0, 0.0, 0.0, 0.0)
+            val distance = start.distance(to)
+            val steps = (distance / 0.4).toInt().coerceAtLeast(1)
+            for (step in 0..steps) {
+                val point = start.clone().add(to.clone().subtract(start).multiply(step.toDouble() / steps))
+                world.spawnParticle(Particle.CRIT, point, 1, 0.0, 0.0, 0.0, 0.0)
             }
         }
     }

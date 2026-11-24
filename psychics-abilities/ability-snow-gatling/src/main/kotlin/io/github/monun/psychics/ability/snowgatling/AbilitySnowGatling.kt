@@ -1,16 +1,14 @@
 package io.github.monun.psychics.ability.snowgatling
 
 import com.destroystokyo.paper.event.entity.ProjectileCollideEvent
+import io.github.Shai0717.kolor.KolorTask
 import io.github.monun.psychics.AbilityConcept
 import io.github.monun.psychics.ActiveAbility
 import io.github.monun.psychics.attribute.EsperAttribute
 import io.github.monun.psychics.damage.Damage
 import io.github.monun.psychics.damage.DamageType
-import io.github.monun.tap.config.Config
-import io.github.monun.tap.config.Name
-import io.github.monun.tap.event.EntityProvider
-import io.github.monun.tap.event.TargetEntity
-import io.github.monun.tap.task.TickerTask
+import io.github.monun.psychics.config.PsychicGroup
+import io.github.monun.psychics.config.PsychicSetting
 import net.kyori.adventure.text.Component.empty
 import org.bukkit.Material
 import org.bukkit.Particle
@@ -29,24 +27,24 @@ import kotlin.math.min
 import kotlin.random.Random.Default.nextDouble
 
 // 눈기관총
-@Name("snow-gatling")
+@PsychicGroup("snow-gatling")
 class AbilityConceptSnowGatling : AbilityConcept() {
-    @Config
+    @PsychicSetting(minimum = 0.0)
     var snowballWiggle = 0.1
 
-    @Config
+    @PsychicSetting(minimum = 0.0)
     var snowballPerTick = 3
 
-    @Config
+    @PsychicSetting(minimum = 0.0)
     var snowballSpeed = 2.0
 
-    @Config
+    @PsychicSetting(minimum = 0.0)
     var slowTicks = 20
 
-    @Config
+    @PsychicSetting(minimum = 0.0)
     var slowdownChance = 0.05
 
-    @Config
+    @PsychicSetting(minimum = 0.0)
     var maxSlowLevel = 6
 
     init {
@@ -62,12 +60,11 @@ class AbilitySnowGatling : ActiveAbility<AbilityConceptSnowGatling>(), Listener 
         psychic.registerEvents(this)
     }
 
-    @TargetEntity(EntityProvider.EntityDamageByEntity.Shooter::class)
     @EventHandler(ignoreCancelled = true)
     fun onEntityDamageByEntity(event: EntityDamageByEntityEvent) {
         val damager = event.damager
 
-        if (damager is Snowball && damager.customName() != null) {
+        if (damager is Snowball && damager.shooter === esper.player && damager.customName() != null) {
             val entity = event.entity
 
             if (entity is LivingEntity) {
@@ -77,12 +74,12 @@ class AbilitySnowGatling : ActiveAbility<AbilityConceptSnowGatling>(), Listener 
                 val concept = concept
 
                 if (nextDouble() < concept.slowdownChance) {
-                    var slow = entity.getPotionEffect(PotionEffectType.SLOW)
+                    var slow = entity.getPotionEffect(PotionEffectType.SLOWNESS)
 
                     if (slow != null) {
                         slow.withAmplifier(min(concept.maxSlowLevel, slow.amplifier + 1))
                     } else {
-                        slow = PotionEffect(PotionEffectType.SLOW, concept.slowTicks, 0, false, false, true)
+                        slow = PotionEffect(PotionEffectType.SLOWNESS, concept.slowTicks, 0, false, false, true)
                     }
 
                     entity.addPotionEffect(slow)
@@ -90,18 +87,17 @@ class AbilitySnowGatling : ActiveAbility<AbilityConceptSnowGatling>(), Listener 
                     val world = location.world
 
                     @Suppress("DEPRECATION")
-                    world.spawnParticle(Particle.SPELL_INSTANT, location, 100)
+                    world.spawnParticle(Particle.INSTANT_EFFECT, location, 100)
                 }
             }
         }
     }
 
-    @TargetEntity(Shooter::class)
     @EventHandler(ignoreCancelled = true)
     fun onProjectileCollide(event: ProjectileCollideEvent) {
         val entity = event.entity
 
-        if (entity is Snowball && entity.customName() != null) {
+        if (entity is Snowball && entity.shooter === esper.player && entity.customName() != null) {
             val victim = event.collidedWith
 
             if (victim is LivingEntity) {
@@ -110,7 +106,6 @@ class AbilitySnowGatling : ActiveAbility<AbilityConceptSnowGatling>(), Listener 
         }
     }
 
-//    @TargetEntity(EntityProvider.ProjectileHit.Shooter::class)
 //    @EventHandler(ignoreCancelled = true)
 //    fun onProjectileCollide(event: ProjectileHitEvent) {
 //        val location = event.hitBlock?.location ?: return
@@ -128,7 +123,7 @@ class AbilitySnowGatling : ActiveAbility<AbilityConceptSnowGatling>(), Listener 
     }
 
     inner class GatlingTask : Runnable {
-        lateinit var task: TickerTask
+        lateinit var task: KolorTask
 
         override fun run() {
             if (durationTime <= 0L) {
@@ -155,11 +150,5 @@ class AbilitySnowGatling : ActiveAbility<AbilityConceptSnowGatling>(), Listener 
 
             location.world.playSound(location, Sound.ENTITY_SNOWBALL_THROW, 0.2F, 0.2F)
         }
-    }
-}
-
-class Shooter : EntityProvider<ProjectileCollideEvent> {
-    override fun getFrom(event: ProjectileCollideEvent): Entity? {
-        return event.entity.shooter.takeIf { it is Entity } as Entity?
     }
 }

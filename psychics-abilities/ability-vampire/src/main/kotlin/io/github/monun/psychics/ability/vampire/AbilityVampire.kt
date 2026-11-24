@@ -4,10 +4,8 @@ import io.github.monun.psychics.Ability
 import io.github.monun.psychics.AbilityConcept
 import io.github.monun.psychics.attribute.EsperStatistic
 import io.github.monun.psychics.tooltip.TooltipBuilder
-import io.github.monun.tap.config.Config
-import io.github.monun.tap.config.Name
-import io.github.monun.tap.event.EntityProvider
-import io.github.monun.tap.event.TargetEntity
+import io.github.monun.psychics.config.PsychicGroup
+import io.github.monun.psychics.config.PsychicSetting
 import net.kyori.adventure.text.Component.text
 import net.kyori.adventure.text.TextComponent
 import net.kyori.adventure.text.format.NamedTextColor
@@ -24,18 +22,18 @@ import org.bukkit.event.player.PlayerAttemptPickupItemEvent
 import org.bukkit.inventory.ItemStack
 
 // 피 빨아먹음
-@Name("vampire")
+@PsychicGroup("vampire")
 class AbilityConceptVampire : AbilityConcept() {
-    @Config
+    @PsychicSetting(minimum = 0.0)
     var healByDamage = 0.1
 
-    @Config
+    @PsychicSetting(minimum = 0.0)
     var orbTicksLived = 6000 - (20 * 30)
 
-    @Config
+    @PsychicSetting(minimum = 0.0)
     var orbPickupDelay = 10
 
-    @Config
+    @PsychicSetting(minimum = 0.0)
     var orbVelocity = 0.35
 
     init {
@@ -68,8 +66,8 @@ class AbilityVampire : Ability<AbilityConceptVampire>(), Listener {
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    @TargetEntity(EntityProvider.EntityDamageByEntity.Damager::class)
     fun onAttack(event: EntityDamageByEntityEvent) {
+        if (event.damager !== esper.player) return
         val entity = event.entity
 
         if (entity is ArmorStand) return
@@ -99,6 +97,7 @@ class AbilityVampire : Ability<AbilityConceptVampire>(), Listener {
 
     @EventHandler(ignoreCancelled = true)
     fun onPickupItem(event: PlayerAttemptPickupItemEvent) {
+        if (event.player !== esper.player) return
         val item = event.item
         if (item.customName() == orbName) {
             val itemStack = item.itemStack
@@ -116,7 +115,7 @@ class AbilityVampire : Ability<AbilityConceptVampire>(), Listener {
                             val location = item.location.apply { y = box.centerY }
                             val world = location.world
 
-                            world.spawnParticle(Particle.ITEM_CRACK, location, 32, 0.0, 0.0, 0.0, 0.1, itemStack)
+                            world.spawnParticle(Particle.ITEM, location, 32, 0.0, 0.0, 0.0, 0.1, itemStack)
                             world.playSound(location, Sound.ENTITY_ITEM_PICKUP, 1.0F, 0.1F)
                         }
                     }

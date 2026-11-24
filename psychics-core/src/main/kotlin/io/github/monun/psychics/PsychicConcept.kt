@@ -22,9 +22,8 @@ import io.github.monun.psychics.tooltip.TooltipBuilder
 import io.github.monun.psychics.tooltip.removeDefaultItemDecorations
 import io.github.monun.psychics.tooltip.stats
 import io.github.monun.psychics.tooltip.template
-import io.github.monun.tap.config.Config
-import io.github.monun.tap.config.ConfigSupport
-import io.github.monun.tap.config.RangeDouble
+import io.github.monun.psychics.config.PsychicSetting
+import io.github.monun.psychics.config.PsychicSettings
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.Component.text
 import net.kyori.adventure.text.format.NamedTextColor
@@ -52,52 +51,48 @@ class PsychicConcept internal constructor() {
     /**
      * 표시 이름 (I18N)
      */
-    @Config
+    @PsychicSetting
     lateinit var displayName: String
         private set
 
     /**
      * 추가 체력
      */
-    @Config
-    @RangeDouble(min = 0.0, max = 32767.0 - 20.0)
+    @PsychicSetting(minimum = 0.0, maximum = 32747.0)
     var healthBonus = 0.0
         private set
 
     /**
      * 추가 체력 재생
      */
-    @Config
-    @RangeDouble(min = 0.0, max = 32767.0)
+    @PsychicSetting(minimum = 0.0, maximum = 32767.0)
     var healthRegenPerSecond = 0.0
         private set
 
     /**
      * 최대 마나
      */
-    @Config
-    @RangeDouble(min = 0.0, max = 32767.0)
+    @PsychicSetting(minimum = 0.0, maximum = 32767.0)
     var mana = 0.0
         private set
 
     /**
      * 마나 재생
      */
-    @Config
-    @RangeDouble(min = 0.0, max = 32767.0)
+    @PsychicSetting(minimum = 0.0, maximum = 32767.0)
     var manaRegenPerSecond = 0.0
         private set
 
     /**
      * 마나 색상
      */
-    @Config
+    @PsychicSetting
     var manaColor = BarColor.BLUE
 
     /**
      * 설명
      */
-    @Config("description")
+    @PsychicSetting("description")
     private var descriptionRaw: List<String> = ArrayList(0)
 
     private var description: List<Component> = listOf(
@@ -119,7 +114,7 @@ class PsychicConcept internal constructor() {
         val gson = GsonComponentSerializer.gson()
         descriptionRaw = description.map { gson.serialize(it) }
 
-        val ret = ConfigSupport.compute(this, config)
+        val ret = PsychicSettings.apply(this, config)
 
         val maxHealthBonus = Bukkit.spigot().spigotConfig.getDouble("attribute.maxHealth", 2048.0 - 20.0)
 

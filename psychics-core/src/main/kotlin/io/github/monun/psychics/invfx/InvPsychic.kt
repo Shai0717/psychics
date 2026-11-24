@@ -1,80 +1,76 @@
 package io.github.monun.psychics.invfx
 
-import io.github.monun.invfx.InvFX
-import io.github.monun.invfx.frame.InvFrame
+import io.github.Shai0717.kolor.KolorInventory
+import io.github.monun.psychics.AbilityConcept
 import io.github.monun.psychics.PsychicConcept
 import io.github.monun.psychics.attribute.EsperStatistic
 import io.github.monun.psychics.item.addItemNonDuplicate
-import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.Component.text
 import net.kyori.adventure.text.format.NamedTextColor
-import net.kyori.adventure.text.format.TextDecoration
 import org.bukkit.Material
+import org.bukkit.entity.Player
+import org.bukkit.event.inventory.InventoryClickEvent
+import org.bukkit.inventory.Inventory
+import org.bukkit.inventory.InventoryHolder
 import org.bukkit.inventory.ItemStack
 
 object InvPsychic {
-    private val previousItem =
-        ItemStack(Material.END_CRYSTAL).apply {
-            itemMeta = itemMeta.apply {
-                displayName(
-                    text().color(NamedTextColor.WHITE).decoration(TextDecoration.ITALIC, false)
-                        .decorate(TextDecoration.BOLD).content("←").build()
-                )
-            }
-        }
-    private val nextItem =
-        ItemStack(Material.END_CRYSTAL).apply {
-            itemMeta = itemMeta.apply {
-                displayName(
-                    text().color(NamedTextColor.WHITE).decoration(TextDecoration.ITALIC, false)
-                        .decorate(TextDecoration.BOLD).content("→").build()
-                )
-            }
-        }
+    private const val PAGE_SIZE = 5
 
-    private val helpItem =
-        ItemStack(Material.DARK_OAK_SIGN).apply {
-            itemMeta = itemMeta.apply {
-                displayName(
-                    text().color(NamedTextColor.GREEN).decoration(TextDecoration.ITALIC, false)
-                        .decorate(TextDecoration.BOLD).content("도움말").build()
-                )
-                lore(
-                    listOf<Component>(
-                        text().color(NamedTextColor.WHITE).decoration(TextDecoration.ITALIC, false)
-                            .content("능력과 스킬의 정보를 확인하세요.").build(),
-                        text().color(NamedTextColor.WHITE).decoration(TextDecoration.ITALIC, false)
-                            .content("← → 버튼을 눌러 스크롤하세요").build(),
-                        text().color(NamedTextColor.WHITE).decoration(TextDecoration.ITALIC, false)
-                            .content("능력과 스킬의 정보를 확인하세요.").build(),
-                        text().color(NamedTextColor.WHITE).decoration(TextDecoration.ITALIC, false)
-                            .content("지급 아이템이 있는 경우 능력을").build(),
-                        text().color(NamedTextColor.WHITE).decoration(TextDecoration.ITALIC, false)
-                            .content("클릭하여 얻을 수 있습니다.").build()
-                    )
-                )
-            }
-        }
+    fun open(player: Player, concept: PsychicConcept, stats: (EsperStatistic) -> Double) {
+        val holder = PsychicHolder(concept, stats)
+        holder.gui = KolorInventory.create(holder, 9, text("PSYCHICS"))
+        render(holder)
+        player.openInventory(holder.gui)
+    }
 
-    fun create(psychicConcept: PsychicConcept, stats: (EsperStatistic) -> Double): InvFrame {
-        return InvFX.frame(1, text("PSYCHICS")) {
-            item(0, 0, psychicConcept.renderTooltip().applyTo(ItemStack(Material.ENCHANTED_BOOK)))
-            item(8, 0, helpItem)
-            list(2, 0, 5, 1, true, { psychicConcept.abilityConcepts }) {
-                transform { it.renderTooltip(stats).applyTo(it.wand ?: ItemStack(Material.BOOK)) }
-                onClickItem { _, _, (item, _), event ->
-                    event.whoClicked.inventory.addItemNonDuplicate(item.supplyItems)
+    fun handleClick(event: InventoryClickEvent): Boolean {
+        val holder = event.view.topInventory.holder as? PsychicHolder ?: return false
+        event.isCancelled = true
+        if (event.clickedInventory !== holder.gui) return true
+
+        when (event.rawSlot) {
+            1 -> holder.page = (holder.page - 1).coerceAtLeast(0)
+            7 -> holder.page = (holder.page + 1).coerceAtMost(maxPage(holder))
+            in 2..6 -> {
+                val ability = holder.concept.abilityConcepts.getOrNull(holder.page * PAGE_SIZE + event.rawSlot - 2)
+                if (ability != null && event.whoClicked is Player) {
+                    event.whoClicked.inventory.addItemNonDuplicate(ability.supplyItems)
                 }
-            }.let { list ->
-                slot(1, 0) {
-                    item = previousItem
-                    onClick { list.index-- }
-                }
-                slot(7, 0) {
-                    item = nextItem
-                    onClick { list.index++ }
-                }
+                return true
             }
+            else -> return true
         }
+        render(holder)
+        return true
+    }
+
+    private fun render(holder: PsychicHolder) {
+        val inventory = holder.gui
+        inventory.clear()
+        inventory.setItem(0, holder.concept.renderTooltip().applyTo(ItemStack(Material.ENCHANTED_BOOK)))
+        inventory.setItem(8, KolorInventory.item(Material.DARK_OAK_SIGN, text("도움말"), listOf(
+            text("← → 버튼으로 스킬 목록을 넘깁니다."),
+            text("스킬 아이콘을 클릭하면 지급 아이템을 받습니다.")
+        )))
+        inventory.setItem(1, KolorInventory.item(Material.END_CRYSTAL, text("←")))
+        inventory.setItem(7, KolorInventory.item(Material.END_CRYSTAL, text("→")))
+        val start = holder.page * PAGE_SIZE
+        holder.concept.abilityConcepts.drop(start).take(PAGE_SIZE).forEachIndexed { index, ability ->
+            val icon = ability.wand ?: ItemStack(Material.BOOK)
+            inventory.setItem(index + 2, ability.renderTooltip(holder.stats).applyTo(icon))
+        }
+    }
+
+    private fun maxPage(holder: PsychicHolder): Int =
+        ((holder.concept.abilityConcepts.size - 1).coerceAtLeast(0)) / PAGE_SIZE
+
+    private class PsychicHolder(
+        val concept: PsychicConcept,
+        val stats: (EsperStatistic) -> Double
+    ) : InventoryHolder {
+        lateinit var gui: Inventory
+        var page = 0
+        override fun getInventory(): Inventory = gui
     }
 }

@@ -1,69 +1,66 @@
 package io.github.monun.psychics.ability.stormbreaker
 
-import io.github.monun.psychics.*
+import io.github.Shai0717.kolor.KolorTask
+import io.github.monun.psychics.Ability
+import io.github.monun.psychics.AbilityConcept
+import io.github.monun.psychics.AbilityType
 import io.github.monun.psychics.attribute.EsperAttribute
 import io.github.monun.psychics.attribute.EsperStatistic
+import io.github.monun.psychics.config.PsychicGroup
+import io.github.monun.psychics.config.PsychicSetting
 import io.github.monun.psychics.damage.Damage
 import io.github.monun.psychics.damage.DamageType
 import io.github.monun.psychics.tooltip.TooltipBuilder
 import io.github.monun.psychics.tooltip.stats
 import io.github.monun.psychics.tooltip.template
 import io.github.monun.psychics.util.TargetFilter
-import io.github.monun.tap.config.Config
-import io.github.monun.tap.config.Name
-import io.github.monun.tap.fake.FakeEntity
-import io.github.monun.tap.fake.Movement
-import io.github.monun.tap.fake.Trail
-import io.github.monun.tap.fake.invisible
-import io.github.monun.tap.math.normalizeAndLength
-import io.github.monun.tap.math.toRadians
-import io.github.monun.tap.trail.TrailSupport
 import net.kyori.adventure.text.Component.text
 import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.*
-import org.bukkit.entity.ArmorStand
+import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.LivingEntity
+import org.bukkit.entity.Snowball
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.block.Action
+import org.bukkit.event.entity.ProjectileHitEvent
 import org.bukkit.event.player.PlayerInteractEvent
-import org.bukkit.inventory.ItemFlag
+import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.ItemStack
 import org.bukkit.potion.PotionEffect
 import org.bukkit.potion.PotionEffectType
-import org.bukkit.util.EulerAngle
 import org.bukkit.util.Vector
+import java.util.UUID
 import kotlin.random.Random.Default.nextDouble
 import kotlin.random.Random.Default.nextFloat
 
-// 도끼를 던져 번개를 내리치고 순간이동 할 수 있음
-@Name("storm-breaker")
+@PsychicGroup("storm-breaker")
 class AbilityConceptStormBreaker : AbilityConcept() {
-    @Config
+    @PsychicSetting(minimum = 0.0)
     var lightningRadius = 2.0
 
-    @Config
+    @PsychicSetting
     var iron = Damage.of(DamageType.MELEE, EsperAttribute.ATTACK_DAMAGE to 2.0)
 
-    @Config
+    @PsychicSetting
     var golden = Damage.of(DamageType.MELEE, EsperAttribute.ATTACK_DAMAGE to 2.5)
 
-    @Config
+    @PsychicSetting
     var diamond = Damage.of(DamageType.MELEE, EsperAttribute.ATTACK_DAMAGE to 3.0)
 
-    @Config
+    @PsychicSetting
     var netherite = Damage.of(DamageType.MELEE, EsperAttribute.ATTACK_DAMAGE to 4.0)
 
-    @Config
+    @PsychicSetting(minimum = 0.0)
     var axeSpeed = 2.0
 
-    @Config
+    @PsychicSetting(minimum = 0.0)
     var axeGravity = 0.04
 
-    @Config
+    @PsychicSetting(minimum = 0.0)
     var slowAmplifier = 3
 
-    @Config
+    @PsychicSetting(minimum = 0.0)
     var slowDurationTicks = 60
 
     init {
@@ -71,17 +68,12 @@ class AbilityConceptStormBreaker : AbilityConcept() {
         range = 256.0
         cooldownTime = 10L * 1000L
         durationTime = 5L * 1000L
-        wand = ItemStack(Material.LIGHTNING_ROD).apply {
-            editMeta {
-                addItemFlags(*ItemFlag.values())
-            }
-        }
+        wand = ItemStack(Material.LIGHTNING_ROD)
         displayName = "스톰브레이커"
         description = listOf(
             text("도끼를 우클릭 시 도끼를 던져 적중한 곳에"),
             text("번개를 내리쳐 피해를 입히고 둔화시킵니다."),
-            text("도끼는 지속시간동안 유지되며 지속시간 이내에"),
-            text("스킬을 재사용시 도끼 위치로 순간이동합니다.")
+            text("도끼가 땅에 꽂힌 동안 다시 사용하면 위치로 순간이동합니다.")
         )
     }
 
@@ -90,242 +82,153 @@ class AbilityConceptStormBreaker : AbilityConcept() {
         tooltip.stats(text("금").color(NamedTextColor.WHITE), golden) { NamedTextColor.GOLD to "golden" }
         tooltip.stats(text("다이아몬드").color(NamedTextColor.WHITE), diamond) { NamedTextColor.AQUA to "diamond" }
         tooltip.stats(text("네더라이트").color(NamedTextColor.WHITE), netherite) { NamedTextColor.RED to "netherite" }
-
         tooltip.template("iron", stats(iron.stats))
         tooltip.template("golden", stats(golden.stats))
         tooltip.template("diamond", stats(diamond.stats))
         tooltip.template("netherite", stats(netherite.stats))
     }
 
-    fun findDamage(type: Material): Damage? {
-        return when (type) {
-            Material.IRON_AXE -> iron
-            Material.GOLDEN_AXE -> golden
-            Material.DIAMOND_AXE -> diamond
-            Material.NETHERITE_AXE -> netherite
-            else -> null
-        }
+    fun findDamage(type: Material): Damage? = when (type) {
+        Material.IRON_AXE -> iron
+        Material.GOLDEN_AXE -> golden
+        Material.DIAMOND_AXE -> diamond
+        Material.NETHERITE_AXE -> netherite
+        else -> null
     }
 }
 
-class AbilityStormBreaker : Ability<AbilityConceptStormBreaker>() {
-    private var hittedAxe: FakeEntity? = null
+class AbilityStormBreaker : Ability<AbilityConceptStormBreaker>(), Listener {
+    private val flyingAxes = HashMap<UUID, Pair<Snowball, Damage>>()
+    private val trailTasks = HashMap<UUID, KolorTask>()
+    private var hitLocation: Location? = null
+    private var axeDisplay: ItemDisplay? = null
 
     override fun onEnable() {
-        psychic.registerEvents(AxeListener())
+        psychic.registerEvents(this)
         psychic.runTaskTimer(this::tick, 0L, 1L)
-
-        if (cooldownTime > 0) {
-            updateCooldown((cooldownTime / 50L).toInt())
-        }
+        updateCooldown((cooldownTime / 50L).toInt())
     }
 
     override fun onDisable() {
-        hittedAxe = null
+        flyingAxes.values.forEach { (projectile, _) -> projectile.remove() }
+        flyingAxes.clear()
+        trailTasks.values.forEach(KolorTask::cancel)
+        trailTasks.clear()
+        axeDisplay?.let(psychic::removeDisplay)
+        axeDisplay = null
+        hitLocation = null
     }
 
-    override fun test(): TestResult {
-        if (psychic.channeling != null)
-            return TestResult.FailedChannel
-
+    override fun test(): io.github.monun.psychics.TestResult {
+        if (psychic.channeling != null) return io.github.monun.psychics.TestResult.FailedChannel
         return super.test()
     }
 
     private fun tick() {
-        hittedAxe?.let {
-            if (durationTime <= 0L) {
-                hittedAxe = null
-                it.remove()
-
-                val loc = it.location.apply { y += 0.5 }
-                val world = loc.world
-                world.spawnParticle(Particle.CLOUD, loc.x, loc.y, loc.z, 32, 0.0, 0.0, 0.0, 0.1)
-                world.playSound(loc, Sound.BLOCK_AMETHYST_BLOCK_BREAK, SoundCategory.MASTER, 2.0F, 2.0F)
-            }
+        if (durationTime <= 0L && hitLocation != null) {
+            hitLocation = null
+            axeDisplay?.let(psychic::removeDisplay)
+            axeDisplay = null
+            val location = esper.player.location
+            location.world.spawnParticle(Particle.CLOUD, location.clone().add(0.0, 1.0, 0.0), 16, 0.2, 0.2, 0.2, 0.05)
         }
     }
 
     private fun updateCooldown(cooldownTicks: Int) {
-        val player = esper.player
-        player.setCooldown(Material.IRON_AXE, cooldownTicks)
-        player.setCooldown(Material.GOLDEN_AXE, cooldownTicks)
-        player.setCooldown(Material.DIAMOND_AXE, cooldownTicks)
-        player.setCooldown(Material.NETHERITE_AXE, cooldownTicks)
+        listOf(Material.IRON_AXE, Material.GOLDEN_AXE, Material.DIAMOND_AXE, Material.NETHERITE_AXE)
+            .forEach { esper.player.setCooldown(it, cooldownTicks) }
     }
 
-    inner class AxeListener : Listener {
-        @EventHandler
-        fun onPlayerInteract(event: PlayerInteractEvent) {
-            val action = event.action
-            if (action == Action.RIGHT_CLICK_AIR || action == Action.RIGHT_CLICK_BLOCK) {
-                event.item?.let { item ->
-                    concept.findDamage(item.type)?.let { damage ->
-                        if (durationTime > 0) {
-                            durationTime = 0
-                            hittedAxe?.let { axe ->
-                                hittedAxe = null
-                                axe.remove()
-                                val player = esper.player
-                                val pLoc = player.location
-                                val world = player.world
+    @EventHandler(ignoreCancelled = true)
+    fun onPlayerInteract(event: PlayerInteractEvent) {
+        if (event.player !== esper.player || event.hand != EquipmentSlot.HAND) return
+        if (event.action != Action.RIGHT_CLICK_AIR && event.action != Action.RIGHT_CLICK_BLOCK) return
+        val item = event.item ?: return
+        val damage = concept.findDamage(item.type) ?: return
 
-                                val loc = axe.location.apply {
-                                    val loc = player.location
-                                    yaw = loc.yaw
-                                    pitch = loc.pitch
-                                    y += 0.5
-                                }
-                                player.teleport(loc)
-                                world.spawnParticle(Particle.CLOUD, pLoc.apply { y += 1.0 }, 32, 0.0, 0.0, 0.0, 0.25)
-                                world.playSound(
-                                    loc,
-                                    Sound.ENTITY_ENDERMAN_TELEPORT,
-                                    SoundCategory.MASTER,
-                                    1.0F,
-                                    0.3F + nextFloat() * 0.2F
-                                )
-                                world.spawnParticle(Particle.CLOUD, loc.apply { y += 1.0 }, 32, 0.0, 0.0, 0.0, 0.25)
-                            }
-                            return
-                        } else {
-                            val result = test()
-
-                            if (result != TestResult.Success) {
-                                result.message(this@AbilityStormBreaker)?.let { esper.player.sendActionBar(it) }
-                                return
-                            }
-
-                            cooldownTime = concept.cooldownTime
-                            val cooldownTicks = (concept.cooldownTime / 50).toInt()
-                            updateCooldown(cooldownTicks)
-
-                            val location = esper.player.eyeLocation
-                            val projectile = AxeProjectile(damage, item).apply {
-                                axe = this@AbilityStormBreaker.psychic.spawnFakeEntity(
-                                    location.clone().apply { y -= 1.62 },
-                                    ArmorStand::class.java
-                                ).apply {
-                                    velocity = location.direction.multiply(concept.axeSpeed)
-
-                                    updateMetadata<ArmorStand> {
-                                        isMarker = true
-                                        invisible = true
-                                    }
-                                    updateEquipment {
-                                        helmet = item.clone()
-                                    }
-                                }
-                            }
-
-                            psychic.launchProjectile(location, projectile)
-                            esper.player.swingMainHand()
-                        }
-                    }
-                }
+        hitLocation?.let { location ->
+            hitLocation = null
+            axeDisplay?.let(psychic::removeDisplay)
+            axeDisplay = null
+            durationTime = 0L
+            val destination = location.clone().apply {
+                yaw = event.player.location.yaw
+                pitch = event.player.location.pitch
+                y += 0.5
             }
+            val previous = event.player.location
+            event.player.teleportAsync(destination)
+            event.player.world.spawnParticle(Particle.CLOUD, previous.add(0.0, 1.0, 0.0), 24, 0.2, 0.2, 0.2, 0.1)
+            event.player.world.playSound(destination, Sound.ENTITY_ENDERMAN_TELEPORT, SoundCategory.PLAYERS, 1.0F, 0.4F + nextFloat() * 0.2F)
+            return
         }
+
+        val result = test()
+        if (result !== io.github.monun.psychics.TestResult.Success) {
+            result.message(this)?.let(event.player::sendActionBar)
+            return
+        }
+        exhaust()
+        updateCooldown((concept.cooldownTime / 50L).toInt())
+
+        val start = event.player.eyeLocation
+        val projectile = event.player.launchProjectile(
+            Snowball::class.java,
+            start.direction.multiply(concept.axeSpeed)
+        )
+        projectile.item = item.clone()
+        projectile.setGravity(false)
+        flyingAxes[projectile.uniqueId] = projectile to damage
+        val trail = psychic.runTaskTimer(Runnable {
+            if (!projectile.isValid) {
+                trailTasks.remove(projectile.uniqueId)?.cancel()
+                return@Runnable
+            }
+            projectile.world.spawnParticle(Particle.END_ROD, projectile.location, 1, 0.0, 0.0, 0.0, 0.025)
+            projectile.velocity = projectile.velocity.apply { y -= concept.axeGravity }
+        }, 0L, 1L)
+        trailTasks[projectile.uniqueId] = trail
+        event.player.swingMainHand()
     }
 
-    inner class AxeProjectile(
-        private val damage: Damage, private val item: ItemStack
-    ) : PsychicProjectile(1200, concept.range) {
-        var axe: FakeEntity? = null
+    @EventHandler(ignoreCancelled = true)
+    fun onProjectileHit(event: ProjectileHitEvent) {
+        val projectile = event.entity as? Snowball ?: return
+        if (projectile.shooter !== esper.player) return
+        val entry = flyingAxes.remove(projectile.uniqueId) ?: return
+        trailTasks.remove(projectile.uniqueId)?.cancel()
 
-        override fun onPreUpdate() {
-            velocity = velocity.apply { y -= concept.axeGravity }
-        }
-
-        override fun onMove(movement: Movement) {
-            val to = movement.to
-            axe?.let { axe ->
-                axe.moveTo(to.clone().apply { y -= 1.62; yaw -= 90.0F })
-                axe.updateMetadata<ArmorStand> {
-                    headPose = EulerAngle(0.0, 0.0, ticks * -0.5)
-                }
+        val hit = event.hitEntity?.location ?: projectile.location
+        val location = hit.clone()
+        val world = location.world
+        durationTime = concept.durationTime
+        hitLocation = location
+        psychic.displayItem(location.clone().apply { y -= 0.35 }, projectile.item.clone()).thenAccept { display ->
+            if (durationTime <= 0L || hitLocation == null) {
+                psychic.removeDisplay(display)
+            } else {
+                axeDisplay = display
             }
         }
+            .exceptionally { exception ->
+                psychic.plugin.logger.warning("Could not create storm-breaker display: ${exception.message}")
+                null
+            }
 
-        override fun onTrail(trail: Trail) {
-            trail.velocity?.let { v ->
-                val from = trail.from
-                val world = from.world
-
-                TrailSupport.trail(from, trail.to, 0.25) { w, x, y, z ->
-                    w.spawnParticle(Particle.END_ROD, x, y, z, 1, 0.0, 0.0, 0.0, 0.025, null, true)
-                }
-
-                val length = v.normalizeAndLength()
-                if (length == 0.0) return
-
-                val filter = TargetFilter(esper.player)
-                world.rayTrace(
-                    from,
-                    v,
-                    length,
-                    FluidCollisionMode.NEVER,
-                    true,
-                    1.0,
-                    filter,
-                )?.let { rayTraceResult ->
-                    durationTime = concept.durationTime
-
-                    val hitLocation = rayTraceResult.hitPosition.toLocation(world)
-                    axe?.let { axe ->
-                        this.axe = null
-                        axe.moveTo(hitLocation.clone().apply { y -= 0.5; yaw = from.yaw - 90.0F })
-                        axe.updateMetadata<ArmorStand> {
-                            headPose = EulerAngle(0.0, 0.0, (-180.0).toRadians())
-                        }
-                        hittedAxe = axe
-                    }
-
-                    val particleVector = Vector()
-
-                    for (i in 0 until 64) {
-                        particleVector.copy(v).apply {
-                            x += nextDouble() - 0.5
-                            y = nextDouble()
-                            z += nextDouble() - 0.5
-                        }
-                        world.spawnParticle(
-                            Particle.ITEM_CRACK,
-                            hitLocation,
-                            0,
-                            particleVector.x,
-                            particleVector.y,
-                            particleVector.z,
-                            1.0,
-                            item
-
-                        )
-                    }
-
-                    remove()
-
-                    val radius = concept.lightningRadius
-                    val knockback = concept.knockback
-                    world.strikeLightningEffect(hitLocation)
-                    val potionEffect = PotionEffect(
-                        PotionEffectType.SLOW,
-                        concept.slowDurationTicks,
-                        concept.slowAmplifier,
-                        false,
-                        false,
-                        false
-                    )
-                    world.getNearbyEntities(hitLocation, radius, radius, radius, filter).forEach { target ->
-                        if (target is LivingEntity) {
-                            target.addPotionEffect(potionEffect)
-                            target.psychicDamage(damage, hitLocation, knockback)
-                        }
-                    }
-                }
+        world.strikeLightningEffect(location)
+        val radius = concept.lightningRadius
+        val effect = PotionEffect(PotionEffectType.SLOWNESS, concept.slowDurationTicks, concept.slowAmplifier, false, false, false)
+        world.getNearbyEntities(location, radius, radius, radius, TargetFilter(esper.player)).forEach { target ->
+            if (target is LivingEntity) {
+                target.addPotionEffect(effect)
+                target.psychicDamage(entry.second, location, concept.knockback)
             }
         }
-
-        override fun onRemove() {
-            axe?.remove()
+        val direction = Vector()
+        repeat(32) {
+            direction.setX(nextDouble() - 0.5).setY(nextDouble()).setZ(nextDouble() - 0.5)
+            world.spawnParticle(Particle.ITEM, location, 0, direction.x, direction.y, direction.z, 1.0, projectile.item)
         }
+        projectile.remove()
     }
 }
-
