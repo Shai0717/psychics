@@ -66,3 +66,5 @@ Windows에서 Java 25의 `JAVA_HOME`을 설정한 뒤 다음을 실행합니다.
 현재 개발 진행중으로 배포버전이 없습니다.
 
 * [docs](https://monun.github.io/psychics/)
+
+[![GitHub Sponsors](https://img.shields.io/github/sponsors/Shai0717?style=flat&logo=githubsponsors&color=ea4aaa)](https://github.com/sponsors/Shai0717)
